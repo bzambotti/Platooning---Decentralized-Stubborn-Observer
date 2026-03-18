@@ -106,7 +106,7 @@ fprintf('Vehicle 2 Local Memory (n_local): %d\n', n_local);
 fprintf('Global Memory (n_global): %d\n', n_global);
 
 %% SCENARIO 1: Spatial Isolation 
-fprintf('\n--- Running Scenario 1: Spatial Isolation ---\n');
+fprintf('\n--- Running Scenario 1 ---\n');
 % Goal: Fault in Veh 2 does not propagate to other in DSO.
 % Disturbance: Sporadic high-magnitude on Veh 2. Dwell time < n_local.
 
@@ -131,8 +131,8 @@ err_norm_d_1 = vecnorm(X_hat_d_1 - X_1);
 err_norm_c_1 = vecnorm(X_hat_c_1 - X_1);
 
 
-%% SCENARIO 2: Temporal Relaxation ("The Frequency Test")
-fprintf('\n--- Running Scenario 2: Temporal Relaxation ---\n');
+%% SCENARIO 2: The Frequency Test
+fprintf('\n--- Running Scenario 2 ---\n');
 % Goal: DSO recovers, CSO accumulates.
 % Disturbance: Period T_attack: n_local < T_attack < n_global.
 
@@ -244,40 +244,36 @@ legend([h_cen, h_attacked, h_healthy], ...
        'DSO Attacked', ...
        'DSO Healthy ', ...
        'Location', 'northeast', 'Interpreter', 'latex', 'FontSize', 10);
-%% Sensitivity Analysis
-% fprintf('\n--- Starting Sensitivity Analysis (Transient Recovery) ---\n');
-% 
-% fprintf('\n--- Solving the Transient Mystery ---\n');
-% 
-% x0_real = zeros(p.n, 1);
-% x0_hat = zeros(p.n, 1);
-% x0_hat(1:3) = [50; 50; 0]; 
-% e0 = x0_real - x0_hat;
-% 
-% % Valori strategici: uno sotto il limite critico (0.015) e tre sopra.
-% r_vals = [0.15, 0.3, 0.5, 1.5]; 
-% colors = lines(4);
-% 
-% % LA CHIAVE: Diamo tempo al sistema di reagire!
-% num_steps_transient = 20; 
-% time_vec = (0:num_steps_transient-1) * p.dt;
-% U_k = [0; 0]; 
-% 
-% % --- BASELINE NOMINALE ---
-% x_t = zeros(p.n, num_steps_transient);
-% x_h_nom = zeros(p.n, num_steps_transient);
-% x_t(:,1) = x0_real;
-% x_h_nom(:,1) = x0_hat;
-% 
-% for k = 1:num_steps_transient-1
-%     x_t(:, k+1) = A * x_t(:, k) + B * U_k;
-%     y = C * x_t(:, k); 
-%     x_h_nom(:, k+1) = A * x_h_nom(:, k) + B * U_k + obs_cent.L * (y - C * x_h_nom(:, k));
-% end
-% err_nom = vecnorm(x_t - x_h_nom);
-% 
-% % --- SENSITIVITY DELLO STUBBORN ---
-% figure('Name', 'The Awakening of the Stubborn Observer', 'Color', 'w');
+%% SPEED OF CONVERGENCE
+fprintf('\n--- Starting Transient Analysis ---\n');
+
+x0_real = zeros(p.n, 1);
+x0_hat = zeros(p.n, 1);
+x0_hat(1:3) = [50; 50; 0]; 
+e0 = x0_real - x0_hat;
+
+r_vals = [0.15, 0.3, 0.5, 1.5]; 
+colors = lines(4);
+
+num_steps_transient = 20; 
+time_vec = (0:num_steps_transient-1) * p.dt;
+U_k = [0; 0]; 
+
+% --- BASELINE NOMINALE ---
+x_t = zeros(p.n, num_steps_transient);
+x_h_nom = zeros(p.n, num_steps_transient);
+x_t(:,1) = x0_real;
+x_h_nom(:,1) = x0_hat;
+
+for k = 1:num_steps_transient-1
+    x_t(:, k+1) = A * x_t(:, k) + B * U_k;
+    y = C * x_t(:, k); 
+    x_h_nom(:, k+1) = A * x_h_nom(:, k) + B * U_k + obs_cent.L * (y - C * x_h_nom(:, k));
+end
+err_nom = vecnorm(x_t - x_h_nom);
+
+% --- SENSITIVITY DELLO STUBBORN ---
+% figure(2);
 % hold on; grid on; box on;
 % 
 % for i = 1:length(r_vals)
@@ -287,7 +283,6 @@ legend([h_cen, h_attacked, h_healthy], ...
 %     x_h_stub = zeros(p.n, num_steps_transient);
 %     x_h_stub(:,1) = x0_hat;
 % 
-%     % Memoria correttamente inizializzata a zero
 %     Sig = max(abs(C*e0))*zeros(size(obs_cent.S,1), num_steps_transient);
 % 
 %     for k = 1:num_steps_transient-1
