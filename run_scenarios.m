@@ -1,16 +1,25 @@
 % LCSS-CDC 2026
+if exist('OCTAVE_VERSION', 'builtin') ~= 0
+    pkg load control;
+end
 
 clearvars; clc; close all;
-addpath(genpath('Functions Platooning 26'));
+addpath(genpath('src'));
 
 %% 1. System Setup
 p = struct();
-p.dt = 0.05;            % Sampling time [s]
-p.N = 15;                % Vehicles
-p.n_veh = 3;            % States per vehicle
-p.n = p.N * p.n_veh;
+p.dt = 0.05;            % Sampling time [s] -> Integration time step for discretized states
+p.N = 15;               % Number of follower vehicles in the platoon
+p.n_veh = 3;            % Number of states per vehicle: spacing error, velocity, and acceleration
+p.n = p.N * p.n_veh;    % Total number of states in the dynamic system
 
-% Physics parameters
+% Physics and Platoon Control Parameters:
+% tau: Engine time lag
+% h: Headway time
+% r: Measurement noise variance related param
+% kp: Proportional gain
+% kd: Derivative gain
+% ka: Acceleration feedback gain
 p.tau = 0.3; p.h = 0.7; p.r = 5; p.kp = 0.2; p.kd = 3.5; p.ka = 0.1;
 
 % Colors for plots
@@ -107,8 +116,9 @@ fprintf('Global Memory (n_global): %d\n', n_global);
 
 %% SCENARIO 1: Spatial Isolation 
 fprintf('\n--- Running Scenario 1: Spatial Isolation ---\n');
-% Goal: Fault in Veh 2 does not propagate to other in DSO.
-% Disturbance: Sporadic high-magnitude on Veh 2. Dwell time < n_local.
+% Goal: Demonstrate that a localized fault (e.g., on Vehicle 2)
+% does not propagate to other blocks when using the Distributed Stubborn Observer (DSO).
+% Disturbance Profile: Sporadic high-magnitude faults with a specific dwell time strategy.
 
 T_sim_1 = 5.1;
 num_steps_1 = floor(T_sim_1 / p.dt);
@@ -133,8 +143,9 @@ err_norm_c_1 = vecnorm(X_hat_c_1 - X_1);
 
 %% SCENARIO 2: Temporal Relaxation ("The Frequency Test")
 fprintf('\n--- Running Scenario 2: Temporal Relaxation ---\n');
-% Goal: DSO recovers, CSO accumulates.
-% Disturbance: Period T_attack: n_local < T_attack < n_global.
+% Goal: Demonstrate that DSO recovers faster between attacks, while the
+% Centralized Stubborn Observer (CSO) accumulates error over time.
+% Disturbance Profile: Periodic attacks with T_attack such that n_local < T_attack < n_global.
 
 T_attack = n_local + 1; 
 fprintf('Attack Period: %d steps (n_local=%d < T < n_global=%d)\n', T_attack, n_local, n_global);
@@ -306,139 +317,3 @@ legend([h_cen, h_attacked, h_healthy], ...
 % ylabel('$\| x_k - \hat{x}_k \|$', 'Interpreter', 'latex', 'FontSize', 14);
 % xlabel('Time [s]', 'Interpreter', 'latex', 'FontSize', 14);
 % legend('Location', 'northeast', 'Interpreter', 'latex', 'FontSize', 12);
-
-function [X, X_hat_phys, X_hat_centr, Delta, Delta_centr] = run_simulation(p, A, B, C, obs_dist, obs_cent, num_steps, dist_hist, maneuver)
-
-    X = zeros(p.n, num_steps);
-    X_hat_z = zeros(p.n, num_steps);
-    Sigma = zeros(size(obs_dist.S,1), num_steps);
-    Delta = zeros(size(obs_dist.R,1), num_steps); % Memoria Distribuita
-    X_hat_centr = zeros(p.n, num_steps);
-    Sigma_centr = zeros(size(obs_cent.S,1), num_steps);
-    Delta_centr = zeros(1, num_steps); 
-    
-    % Initial Conditions
-    v_ref = 0;
-    for i = 1:p.N
-        idx_v = (i-1)*p.n_veh + 2;
-        X(idx_v, 1) = v_ref;
-        X_hat_z(idx_v, 1) = v_ref; 
-        X_hat_centr(idx_v, 1) = v_ref;
-    end
-    
-    X_hat_z(:, 1) = obs_dist.T_global \ X_hat_z(:, 1);
-    
-    % --- INIZIALIZZAZIONE LEADER ---
-    v_leader = v_ref; 
-    v_target = 20;
-    
-    for k = 1 : num_steps - 1
-        t = (k-1) * p.dt; % Time starts at 0
-        
-        % 1. Calcolo accelerazione del leader (a_0)
-        if strcmp(maneuver, 'cruise')
-        if v_leader < v_target
-            a_leader = 1.5; % Accelerate
-        else
-            a_leader = 0;   % Cruise
-        end        
-        end
-        if strcmp(maneuver, 'braking')
-            if t >= 5 && t <= 10
-                a_leader = -3; % Hard brake
-            end
-        end
-        
-        % 2. Aggiornamento velocità del leader (v_0)
-        v_leader_next = v_leader + a_leader * p.dt; 
-        
-        % 3. Costruzione del vettore di input U_k (2x1)
-        U_k = [v_leader; a_leader];
-        
-        % 4. Evolution del sistema fisico
-        X(:, k+1) = A * X(:, k) + B * U_k;
-        
-        % 5. Measurement (con rumore/outlier)
-        y_meas = C * X(:, k) + dist_hist(:, k);
-        
-        % 6. DSO (Nota: passiamo U_k invece di u_scalar)
-        [X_hat_z(:, k+1), Sigma(:, k+1), Delta(:, k+1)] = stubborn_finitememory(...
-            X_hat_z(:, k), Sigma(:, k), y_meas, U_k, obs_dist);
-            
-        % 7. CSO (Nota: passiamo U_k invece di u_scalar)
-        [X_hat_centr(:, k+1), Sigma_centr(:, k+1), Delta_centr(:, k+1)] = observer_stubborn_finite_memory(...
-            X_hat_centr(:, k), Sigma_centr(:, k), y_meas, U_k, obs_cent);
-            
-        % Prepariamo la velocità del leader per il prossimo step
-        v_leader = v_leader_next;
-    end
-    
-    % Convert DSO back to physical coordinates
-    X_hat_phys = obs_dist.T_global * X_hat_z;
-end
-
-function [A, B, C] = model_platoon(params)
-    N = params.N; % Numero di follower
-    n_states = 3 * N;
-    dt = params.dt;
-    
-    % Parametri del veicolo e del controllo
-    tau = params.tau;
-    kp = params.kp; 
-    kd = params.kd; 
-    ka = params.ka; % <-- Aggiunto per il controllo sull'accelerazione
-    h = params.h;
-    
-    A_cont = zeros(n_states, n_states);
-    
-    for i = 1:N
-        idx = (i-1)*3 + 1 : i*3;
-        d_idx = idx(1); v_idx = idx(2); a_idx = idx(3);
-        
-        % 1. Spacing Error dynamics: e_dot = v_prev - v - h*a
-        A_cont(d_idx, v_idx) = -1;
-        A_cont(d_idx, a_idx) = -h; % CTH term
-        
-        % 2. Velocity dynamics: v_dot = a
-        A_cont(v_idx, a_idx) = 1;
-        
-        % 3. Acceleration dynamics: a_dot = -1/tau * a + 1/tau * u
-        A_cont(a_idx, d_idx) = kp/tau;
-        A_cont(a_idx, v_idx) = -kd/tau; 
-        A_cont(a_idx, a_idx) = -(1 + ka)/tau; % <-- Modificato per includere il feedback ka
-        
-        % Accoppiamento con il veicolo precedente (i-1)
-        if i > 1
-            prev_idx = (i-2)*3 + 1 : (i-1)*3;
-            A_cont(d_idx, prev_idx(2)) = 1;       % v_prev in e_dot
-            A_cont(a_idx, prev_idx(2)) = kd/tau;  % v_prev in u
-            A_cont(a_idx, prev_idx(3)) = ka/tau;  % a_prev in u
-        end
-    end
-    
-    % B_cont rappresenta l'ingresso esogeno (il LEADER) sul primo follower
-    % U_leader = [v_0; a_0] -> B_cont avra' 2 colonne
-    B_cont = zeros(n_states, 2); 
-    
-    % Colonna 1: ingressi moltiplicati per v_0
-    B_cont(1, 1) = 1;       % v_0 entra in e_dot del primo follower
-    B_cont(3, 1) = kd/tau;  % v_0 entra nel controllo (a_dot) del primo follower
-    
-    % Colonna 2: ingressi moltiplicati per a_0
-    B_cont(3, 2) = ka/tau;  % a_0 entra nel controllo (a_dot) del primo follower
-    
-    % Matrice di Uscita C (Misura e_i, v_i per ogni follower)
-    C = kron(eye(N), [1 0 0; 0 1 0]); 
-    
-    % Matrice D (Nessun feedthrough diretto)
-    D_cont = zeros(size(C, 1), 2);
-   
-    % --- DISCRETIZZAZIONE ---
-    % Usa direttamente la tua matrice C così il sistema è già formattato bene
-    sys_c = ss(A_cont, B_cont, C, D_cont); 
-    sys_d = c2d(sys_c, dt, 'zoh'); 
-    
-    A = sys_d.A; 
-    B = sys_d.B; 
-    % C rimane invariata nella discretizzazione ZOH
-end
