@@ -1,6 +1,5 @@
 % Partition and matrices transformation (Algorithm 1)
 
-
 function [Pd, n_part, m_part, At, Bt, Ct, Lt, T_global] = findAndTransformObserver(A, B, C, L)
     n = size(A,1);
     P = decentralizeOutputs(A, C);      % P_init   
@@ -8,7 +7,6 @@ function [Pd, n_part, m_part, At, Bt, Ct, Lt, T_global] = findAndTransformObserv
     
     % =====================================================================
     % PHASE 1: DISCOVER THE PARTITION (Bottom-Up)
-    % Usiamo il ciclo solo per trovare i blocchi compatibili
     % =====================================================================
     At_temp = A; Ct_temp = C; Lt_temp = L;
     n_pr = 0; 
@@ -66,8 +64,7 @@ function [Pd, n_part, m_part, At, Bt, Ct, Lt, T_global] = findAndTransformObserv
     end
 
     % =====================================================================
-    % PHASE 2: RE-APPLY DECOMPOSITION (Top-Down)
-    % Costruiamo il sistema finale come descritto nel tuo esempio LaTeX
+    % PHASE 2: RE-APPLY DECOMPOSITION 
     % =====================================================================
     
     % 1. Ribaltiamo l'ordine per avere i blocchi dalla radice alle foglie
@@ -115,7 +112,7 @@ function [Pd, n_part, m_part, At, Bt, Ct, Lt, T_global] = findAndTransformObserv
     Bt = T_global \ B;
     
     % Numerical cleanup
-    tol = 1e-6; % Abbassato a 1e-6 per rispettare le soglie del tuo documento
+    tol = 1e-6; 
     At(abs(At)<tol) = 0; Bt(abs(Bt)<tol) = 0;
     Ct(abs(Ct)<tol) = 0; Lt(abs(Lt)<tol) = 0;
 end
@@ -130,6 +127,8 @@ function [T, nu] = structured_obs_decomp(A, C)
 end
 
 function [output_partition] = decentralizeOutputs(A, C)
+% Helper function to speed the algorithm: looks for outputs with the same
+% observable subspace
     [m, ~] = size(C); rem = 1:m; output_partition = {};
     while ~isempty(rem)
         curr = rem(1); span = get_span(A, C(curr,:)); blk = curr; rem(1)=[]; i=1;
@@ -139,7 +138,6 @@ function [output_partition] = decentralizeOutputs(A, C)
         end
         output_partition{end+1}=blk;
     end
-    num_blocks = length(output_partition);
 end
 
 function span = get_span(A, C)
