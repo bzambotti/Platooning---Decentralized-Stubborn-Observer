@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# MATLAB autosave / cache
+*.asv
+*.m~
+*.mex*
+slprj/
+
+# Generated results
+*.mat
+results/
+
+# Figures exported locally
+*.fig

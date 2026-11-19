@@ -1,13 +1,17 @@
+% MODEL_PLATOON  Discrete-time (ZOH) model of a homogeneous platoon of N followers
+% under a CTH spacing policy and a predecessor-following CACC law.
+% State of follower i: [spacing error; velocity; acceleration]. Output: C = I_N kron [1 0 0; 0 1 0].
+% Input u = [v_0; a_0] (leader velocity and acceleration).
 function [A, B, C] = model_platoon(params)
-    N = params.N; % Numero di follower
+    N = params.N; % Number of followers
     n_states = 3 * N;
     dt = params.dt;
     
-    % Parametri del veicolo e del controllo
+    % Vehicle and controller parameters
     tau = params.tau;
     kp = params.kp; 
     kd = params.kd; 
-    ka = params.ka; % <-- Aggiunto per il controllo sull'accelerazione
+    ka = params.ka; % acceleration feedback gain
     h = params.h;
     
     A_cont = zeros(n_states, n_states);
@@ -26,9 +30,9 @@ function [A, B, C] = model_platoon(params)
         % 3. Acceleration dynamics: a_dot = -1/tau * a + 1/tau * u
         A_cont(a_idx, d_idx) = kp/tau;
         A_cont(a_idx, v_idx) = -kd/tau; 
-        A_cont(a_idx, a_idx) = -(1 + ka)/tau; % <-- Modificato per includere il feedback ka
+        A_cont(a_idx, a_idx) = -(1 + ka)/tau;
         
-        % Accoppiamento con il veicolo precedente (i-1)
+        % Coupling with the preceding vehicle (i-1)
         if i > 1
             prev_idx = (i-2)*3 + 1 : (i-1)*3;
             A_cont(d_idx, prev_idx(2)) = 1;       % v_prev in e_dot
@@ -37,29 +41,28 @@ function [A, B, C] = model_platoon(params)
         end
     end
     
-    % B_cont rappresenta l'ingresso esogeno (il LEADER) sul primo follower
-    % U_leader = [v_0; a_0] -> B_cont avra' 2 colonne
+    % B_cont: exogenous input (the leader) acting on the first follower
+    % U_leader = [v_0; a_0] -> B_cont has 2 columns
     B_cont = zeros(n_states, 2); 
     
-    % Colonna 1: ingressi moltiplicati per v_0
-    B_cont(1, 1) = 1;       % v_0 entra in e_dot del primo follower
-    B_cont(3, 1) = kd/tau;  % v_0 entra nel controllo (a_dot) del primo follower
+    % Column 1: terms multiplied by v_0
+    B_cont(1, 1) = 1;       % v_0 enters e_dot of the first follower
+    B_cont(3, 1) = kd/tau;  % v_0 enters the control law (a_dot) of the first follower
     
-    % Colonna 2: ingressi moltiplicati per a_0
-    B_cont(3, 2) = ka/tau;  % a_0 entra nel controllo (a_dot) del primo follower
+    % Column 2: terms multiplied by a_0
+    B_cont(3, 2) = ka/tau;  % a_0 enters the control law (a_dot) of the first follower
     
-    % Matrice di Uscita C (Misura e_i, v_i per ogni follower)
+    % Output matrix C (measures e_i, v_i of each follower)
     C = kron(eye(N), [1 0 0; 0 1 0]); 
     
-    % Matrice D (Nessun feedthrough diretto)
+    % No direct feedthrough
     D_cont = zeros(size(C, 1), 2);
    
     % --- DISCRETIZZAZIONE ---
-    % Usa direttamente la tua matrice C così il sistema è già formattato bene
     sys_c = ss(A_cont, B_cont, C, D_cont); 
     sys_d = c2d(sys_c, dt, 'zoh'); 
     
     A = sys_d.A; 
     B = sys_d.B; 
-    % C rimane invariata nella discretizzazione ZOH
+    % C is unchanged by the ZOH discretization
 end

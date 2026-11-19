@@ -1,4 +1,4 @@
-% Distributed - finite memory stubborn observer observer 
+% Decentralized finite-memory stubborn observer (one threshold per output block).
 function [x_hat_next, sigma_next,Delta, y_hat] = stubborn_finitememory(x_hat, sigma, y, u, plant)
     y_hat = plant.C * x_hat + plant.D * u;
     innov = y - y_hat;

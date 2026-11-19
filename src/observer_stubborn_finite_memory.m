@@ -1,32 +1,29 @@
 function [x_hat_next, Sigma_next, Delta_k] = observer_stubborn_finite_memory(x_hat_k, Sigma_k, y_meas, u_k, params)
-    % CORREZIONE: L'ordine degli input ora corrisponde alla chiamata nel main:
-    % 1. x_hat_k (Stato)
-    % 2. Sigma_k (Memoria)
-    % 3. y_meas  (Misura)
-    % 4. u_k     (Input scalare)
-    % 5. params  (Struttura)
+    % Centralized finite-memory stubborn observer (single global threshold).
+    % Inputs: estimate x_hat_k, memory buffer Sigma_k, measurement y_meas,
+    %         input u_k, params (A, B, C, L, D, Theta, tau).
 
-    % Estrai matrici sistema e osservatore
+    % System and observer matrices
     A = params.A; 
     B = params.B;
     C = params.C;
     L = params.L;
     
-    % Parametri Stubborn
+    % Stubborn parameters
     Theta = params.Theta;
     tau = params.tau;
     
     % Output error (tilde_y_k)
     y_hat = C * x_hat_k;
     
-    % Aggiunta robustezza: gestiamo D se presente (anche se zero)
+    % Feedthrough term, if present
     if isfield(params, 'D') && ~isempty(params.D)
          y_hat = y_hat + params.D * u_k;
     end
     
     tilde_y = y_meas - y_hat;
     
-    % Input per la memoria (SCALARE per il caso centralizzato)
+    % Memory input (scalar in the centralized case)
     abs_y_err = norm(tilde_y, 2); 
     
     % Saturation Threshold (Delta_k)
@@ -45,11 +42,10 @@ function [x_hat_next, Sigma_next, Delta_k] = observer_stubborn_finite_memory(x_h
     end
     
     % Observer Update
-    % Ora u_k è uno scalare, quindi B * u_k funziona (n x 1) * (1 x 1)
     x_hat_next = A * x_hat_k + B * u_k + L * sat_tilde_y;
     
     % Threshold Update
-    % Ricostruiamo le matrici S e G al volo (o potresti passarle in params)
+    % Shift-register matrices S and G
     S = diag(ones(tau-1, 1), -1);
     G = zeros(tau, 1);
     G(1) = 1;
