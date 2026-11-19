@@ -29,8 +29,14 @@ p.B = B;
 p.C = C;
 
 % Observer Design (Decentralized LQR)
-L_sparse = generate_observer_gain(500, 1, p);
+L_sparse = transpose(dlqr(A', C', 500,1));
+
+
+% Numerical cleanup
+tol = 1e-3;
+L_sparse(abs(L_sparse)<tol) = 0;
 max(abs(eig(A-L_sparse*C)))
+
 
 % Structural Decomposition
 [Pd, n_part, m_part, At, Bt, Ct, Lt, T_global] = findAndTransformObserver(A, B, C, L_sparse);
@@ -115,10 +121,10 @@ num_steps_1 = floor(T_sim_1 / p.dt);
 params_1.C = C;
 params_1.target_sensor_idx = target_sensor_idx;
 params_1.magnitude = 10; 
-params_1.min_dwell = 1;
+params_1.min_dwell = 2;
 
 if n_local == 0
-    params_1.max_dwell = 1;
+    params_1.max_dwell = 2;
 else
     params_1.max_dwell = max(1, n_local-2); 
 end
@@ -130,7 +136,16 @@ dist_hist_1 = generate_scenario_disturbance(params_1, num_steps_1, 'spatial_isol
 err_norm_d_1 = vecnorm(X_hat_d_1 - X_1);
 err_norm_c_1 = vecnorm(X_hat_c_1 - X_1);
 
+% Norma Media (che avevi già calcolato giusto)
+mean_d1 = mean(err_norm_d_1);
+mean_c1 = mean(err_norm_c_1);
 
+% RMSE 
+rmse_d1 = sqrt(mean(err_norm_d_1.^2));
+rmse_c1 = sqrt(mean(err_norm_c_1.^2));
+
+fprintf('RMSE (DSO): %.4f\n', rmse_d1);
+fprintf('RMSE (CSO): %.4f\n', rmse_c1);
 %% SCENARIO 2: The Frequency Test
 fprintf('\n--- Running Scenario 2 ---\n');
 % Goal: DSO recovers, CSO accumulates.
@@ -153,8 +168,19 @@ dist_hist_2 = generate_scenario_disturbance(params_2, num_steps_2, 'temporal_rel
 err_norm_d_2 =(vecnorm(X_hat_d_2 - X_2));
 err_norm_c_2 = (vecnorm(X_hat_c_2 - X_2));
 
+mean_d2 = mean(err_norm_d_2);
+mean_c2 = mean(err_norm_c_2);
+
+% RMSE 
+rmse_d2 = sqrt(mean(err_norm_d_2.^2));
+rmse_c2 = sqrt(mean(err_norm_c_2.^2));
+
+
+fprintf('RMSE (DSO): %.4f\n', rmse_d2);
+fprintf('RMSE (CSO): %.4f\n', rmse_c2);
+
 fprintf('Mean Error Norm (DSO): %.4f\n', mean(err_norm_d_2));
-fprintf('Mean Error Norm (CSO): %.4f\n', mean(err_norm_c_2));
+fprintf('Mean Error Norm (CSO): %.4f\n', mean  (err_norm_c_2));
 save('scenario2_results.mat', 'X_2', 'X_hat_d_2', 'X_hat_c_2', 'err_norm_d_2', 'err_norm_c_2', 'dist_hist_2');
 
 % --- PLOT ---
